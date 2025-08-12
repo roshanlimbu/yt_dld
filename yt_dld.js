@@ -1,4 +1,5 @@
 const youtubedl = require("yt-dlp-exec");
+const cliProgress = require("cli-progress"); // npm install cli-progress
 
 const args = process.argv.slice(2);
 if (args.length < 1) {
@@ -32,7 +33,6 @@ if (format === "mp3") {
     ytdlpOptions.audioQuality = quality;
   }
 } else if (format === "mp4") {
-  // fallback options for mp4
   ytdlpOptions.format =
     "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best";
 } else {
@@ -42,11 +42,38 @@ if (format === "mp3") {
       : `bestvideo[ext=${format}][height<=${quality}]+bestaudio/best[ext=${format}][height<=${quality}]`;
 }
 
-youtubedl(url, ytdlpOptions)
-  .then((output) => {
+// progress bar
+const progressBar = new cliProgress.SingleBar({
+  format: "Downloading [{bar}] {percentage}% | ETA: {eta}s",
+  barCompleteChar: "\u2588",
+  barIncompleteChar: "\u2591",
+  hideCursor: true,
+});
+progressBar.start(100, 0);
+
+const subprocess = youtubedl.exec(url, ytdlpOptions);
+
+subprocess.stdout.on("data", (data) => {
+  const line = data.toString();
+  const match = line.match(/(\d+(?:\.\d+)?)%/);
+  if (match) {
+    progressBar.update(parseFloat(match[1]));
+  }
+});
+
+subprocess.stderr.on("data", (data) => {
+  const line = data.toString();
+  const match = line.match(/(\d+(?:\.\d+)?)%/);
+  if (match) {
+    progressBar.update(parseFloat(match[1]));
+  }
+});
+
+subprocess.on("close", (code) => {
+  progressBar.stop();
+  if (code === 0) {
     console.log("Download complete!");
-    if (output) console.log(output);
-  })
-  .catch((err) => {
-    console.error("Error:", err.stderr || err.message || err);
-  });
+  } else {
+    console.error(`yt-dlp exited with code ${code}`);
+  }
+});
